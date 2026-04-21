@@ -9,16 +9,36 @@ Ce projet consiste en la conception et le développement d'un système intellige
 * **Frontend :** React.js, TailwindCSS *(À venir)*
 * **Déploiement :** Docker *(À venir)*
 
-## 📂 Structure du projet
-* `data/` : Jeux de données (ex: NSL-KDD) - *Non versionné sur Git*
-* `notebooks/` : Analyse Exploratoire des Données (EDA) et tests des modèles.
-* `images/` : Captures d'écran et graphiques générés.
-* `src/` : Code source de l'application (API & Dashboard).
-* `models/` : Modèles d'IA entraînés.
+## 🏗️ Architecture du Système
+Voici l'architecture globale et le flux de données de la solution :
 
-## 📊 Analyse Exploratoire (EDA)
-Voici la répartition initiale du trafic (Normal vs Attaques) basée sur le dataset NSL-KDD :
-![Répartition du trafic](images/repartition_trafic.png)
+```mermaid
+flowchart LR
+    classDef attacker fill:#ffcccc,stroke:#ff0000,stroke-width:2px;
+    classDef server fill:#e6f3ff,stroke:#0066cc,stroke-width:2px;
+    classDef ai fill:#e6ffe6,stroke:#009933,stroke-width:2px;
+    classDef action fill:#ffe6cc,stroke:#ff9900,stroke-width:2px;
 
----
-*Projet réalisé dans le cadre du stage technique chez YaneCode Digital R&D Lab - 2026.*
+    subgraph Z1["1. Zone Reseau - Attaque et Collecte"]
+        A["Internet / Attaquant"] -->|Trafic malveillant| B["Serveur PME - Cible"]
+        B -->|Capture des paquets| C["Collecteur de Logs - Wazuh / Script"]
+    end
+
+    subgraph Z2["2. Zone Detection - Cerveau IA"]
+        C -->|Envoi des donnees reseau| D["Backend FastAPI"]
+        D -->|Extraction des features| E["Modele ML - Scikit-Learn"]
+        E -->|Prediction| D
+        D -->|Archivage| F["Base de donnees PostgreSQL"]
+    end
+
+    subgraph Z3["3. Zone Prevention - SOC"]
+        E -.->|Alerte menace detectee| D
+        D -->|Ordre de blocage IP| G["Firewall / IPS - iptables"]
+        G -.->|Coupe la connexion| A
+        D -->|Flux temps reel WebSockets| H["Dashboard React - Console SOC"]
+    end
+
+    class A attacker
+    class B,C,D,F,H server
+    class E ai
+    class G action
