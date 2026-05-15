@@ -12,3 +12,6 @@ models/*.h5
 # OS
 .DS_Store
 logs_alertes.txt
+live_traffic.csv
+logs_alertes.txt
+__pycache__/
