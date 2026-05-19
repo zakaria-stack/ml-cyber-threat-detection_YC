@@ -1,41 +1,114 @@
 import os
+import time
 import joblib
+import logging
 import pandas as pd
-from fastapi import FastAPI
+import numpy as np
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 # =====================================================================
-# 1. INITIALISATION DE L'APPLICATION (API)
+# 1. CONFIGURATION DU SYSTEME DE JOURNALISATION (LOGGING)
+# =====================================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] [SOC-API] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(__name__)
+
+# =====================================================================
+# 2. INITIALISATION DE L'APPLICATION (FASTAPI)
 # =====================================================================
 app = FastAPI(
-    title="API de Détection d'Intrusions (IDS/IPS)",
-    description="Backend analytique du SOC utilisant le modèle Machine Learning XGBoost pour la classification du trafic réseau en temps réel.",
-    version="1.0"
+    title="YaneCode SOC - Moteur d'Inference IA",
+    description="Backend analytique (NIDS) base sur XGBoost pour la classification des flux reseaux en temps reel.",
+    version="2.0.0"
+)
+
+# Configuration CORS pour autoriser les requetes du Dashboard Desktop
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # =====================================================================
-# 2. CHARGEMENT DU MODÈLE ET DES OBJETS DE PRÉTRAITEMENT
+# 3. GESTION DES RESSOURCES ET MODELES MACHINE LEARNING
 # =====================================================================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
-print("⏳ Initialisation du moteur IA en cours...")
-try:
-    xgboost_model = joblib.load(os.path.join(MODELS_DIR, "xgboost_final_model.pkl"))
-    scaler = joblib.load(os.path.join(MODELS_DIR, "scaler.pkl"))
-    label_encoder = joblib.load(os.path.join(MODELS_DIR, "label_encoder.pkl"))
-    print("✅ Modèles de Machine Learning chargés avec succès !")
-except Exception as e:
-    print(f"❌ Erreur lors du chargement des modèles : {e}")
+xgboost_model = None
+scaler = None
+label_encoder = None
+
+@app.on_event("startup")
+def load_ml_components():
+    """Charge les modeles en memoire au demarrage du serveur."""
+    global xgboost_model, scaler, label_encoder
+    logger.info("Initialisation du moteur d'Intelligence Artificielle...")
+    
+    try:
+        model_path = os.path.join(MODELS_DIR, "xgboost_final_model.pkl")
+        scaler_path = os.path.join(MODELS_DIR, "scaler.pkl")
+        encoder_path = os.path.join(MODELS_DIR, "label_encoder.pkl")
+        
+        if not all(os.path.exists(p) for p in [model_path, scaler_path, encoder_path]):
+            raise FileNotFoundError("Un ou plusieurs fichiers de modele sont introuvables.")
+
+        xgboost_model = joblib.load(model_path)
+        scaler = joblib.load(scaler_path)
+        label_encoder = joblib.load(encoder_path)
+        
+        logger.info("Composants Machine Learning charges avec succes.")
+    except Exception as e:
+        logger.error(f"Erreur critique lors du chargement des modeles : {e}")
+        raise RuntimeError("Echec de l'initialisation du backend IA.")
 
 # =====================================================================
-# 3. SCHÉMAS DE VALIDATION DES DONNÉES (PYDANTIC)
+# 4. MOTEUR HEURISTIQUE (POST-TRAITEMENT ET REGLES METIERS)
+# =====================================================================
+class HeuristicEngine:
+    """
+    Couche de logique deterministe appliquee apres la prediction probabiliste de l'IA.
+    Permet de corriger les biais d'environnement et d'appliquer des signatures strictes.
+    """
+    
+    CRITICAL_PORTS = {21, 22, 23, 139, 445, 3306, 8080}
+
+    @classmethod
+    def apply_rules(cls, predicted_label: str, dest_port: int, flow_pkts_s: float) -> str:
+        final_label = predicted_label
+
+        # Regle 1 : Correction du Faux Positif (Data Leakage local)
+        if final_label == "FTP-Patator" and dest_port != 21:
+            final_label = "PortScan"
+            
+        # Regle 2 : Detection d'Inondation Applicative (DDoS / DoS HTTP)
+        if dest_port == 80 and flow_pkts_s > 1000.0:
+            final_label = "DDoS"
+
+        # Regle 3 : Detection de force brute ciblée (SSH)
+        if dest_port == 22 and flow_pkts_s > 10.0:
+            final_label = "SSH-Patator (Brute Force)"
+            
+        # Regle 4 : Detection par signature de balayage de ports (Reconnaissance)
+        if final_label in ["BENIGN", "NORMAL"] and dest_port in cls.CRITICAL_PORTS:
+            # S'il y a des pics d'activite sur des ports critiques non standard
+            if flow_pkts_s > 50.0:
+                final_label = "PortScan"
+
+        return final_label
+
+# =====================================================================
+# 5. SCHEMAS DE VALIDATION DES DONNEES (PYDANTIC)
 # =====================================================================
 class NetworkTrafficData(BaseModel):
-    """
-    Structure attendue pour un flux réseau (Flow).
-    Comprend les 78 caractéristiques extraites par CICFlowMeter.
-    """
+    """Structure parametrique d'un flux reseau (78 features de CICFlowMeter)."""
     destination_port: float
     flow_duration: float
     total_fwd_packets: float
@@ -91,7 +164,6 @@ class NetworkTrafficData(BaseModel):
     average_packet_size: float
     avg_fwd_segment_size: float
     avg_bwd_segment_size: float
-    # Gestion du nom de colonne spécifique généré par Pandas
     fwd_header_length_1: float = Field(..., alias="fwd_header_length.1")
     fwd_avg_bytes_bulk: float
     fwd_avg_packets_bulk: float
@@ -117,63 +189,81 @@ class NetworkTrafficData(BaseModel):
     idle_min: float
 
 class PredictionResponse(BaseModel):
-    """
-    Structure de la réponse renvoyée par l'API à l'interface SOC.
-    """
+    """Structure normalisee de la reponse de l'API."""
     prediction: str
     is_threat: bool
     confidence_score: float
+    processing_time_ms: float
 
 # =====================================================================
-# 4. CONTRÔLEURS DE L'API (ENDPOINTS)
+# 6. CONTROLEURS API (ENDPOINTS)
 # =====================================================================
 @app.get("/")
-def read_root():
-    """
-    Point de terminaison pour vérifier l'état du serveur.
-    """
-    return {"status": "Actif", "message": "Le moteur d'inférence IDS/IPS est opérationnel. 🛡️"}
+def health_check():
+    """Endpoint de verification de la disponibilite du service."""
+    return {
+        "service": "YaneCode SOC Backend",
+        "status": "Online",
+        "engine": "XGBoost + Heuristic Filter"
+    }
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict_traffic(data: NetworkTrafficData):
+def predict_traffic(data: NetworkTrafficData, request: Request):
     """
-    Analyse un flux réseau entrant, applique les transformations nécessaires, 
-    et retourne la classification de sécurité (Normal ou Type d'attaque).
+    Endpoint principal d'analyse.
+    Reçoit le vecteur de caracteristiques, l'evalue, et retourne le verdict.
     """
-    # 1. Extraction des données validées
-    input_dict = data.model_dump(by_alias=True)
+    start_time = time.time()
     
-    # 2. Formatage en DataFrame avec l'ordre exact des colonnes attendu par le modèle
-    df = pd.DataFrame([input_dict])
-    colonnes_entrainement = scaler.feature_names_in_
-    df = df[colonnes_entrainement]
+    try:
+        # 1. Extraction et formatage des donnees
+        input_dict = data.model_dump(by_alias=True)
+        df = pd.DataFrame([input_dict])
+        
+        # Securite : S'assurer de l'ordre exact des colonnes
+        colonnes_entrainement = scaler.feature_names_in_
+        df = df[colonnes_entrainement]
 
-    # 3. Standardisation des caractéristiques (Z-score normalization)
-    scaled_features = scaler.transform(df)
-    
-    # 4. Inférence (Prédiction probabiliste via XGBoost)
-    prediction_encoded = xgboost_model.predict(scaled_features)[0]
-    probabilities = xgboost_model.predict_proba(scaled_features)[0]
-    confidence = float(max(probabilities))
-    
-    # 5. Décodage de la classe prédite
-    predicted_label = str(label_encoder.inverse_transform([prediction_encoded])[0])
-    
-    # --- 🧠 FILTRE HEURISTIQUE SOC (CORRECTION DU BIAIS D'ENVIRONNEMENT) ---
-    # Si le modèle détecte une attaque de force brute FTP (FTP-Patator), 
-    # mais que le port cible n'est pas 21 (FTP), il s'agit probablement d'un 
-    # balayage de ports (PortScan) ou d'un flux massif local.
-    dest_port = int(input_dict.get("destination_port", 0))
-    if predicted_label == "FTP-Patator" and dest_port != 21:
-        predicted_label = "PortScan"
-    # -----------------------------------------------------------------------
+        # 2. Normalisation des donnees (Z-Score)
+        scaled_features = scaler.transform(df)
+        
+        # 3. Inference via le modele Machine Learning
+        prediction_encoded = xgboost_model.predict(scaled_features)[0]
+        probabilities = xgboost_model.predict_proba(scaled_features)[0]
+        confidence = float(max(probabilities))
+        
+        # 4. Decodage du resultat
+        base_prediction = str(label_encoder.inverse_transform([prediction_encoded])[0])
+        
+        # 5. Application de la surcouche heuristique
+        dest_port = int(input_dict.get("destination_port", 0))
+        flow_pkts_s = float(input_dict.get("flow_packets_s", 0.0))
+        
+        final_prediction = HeuristicEngine.apply_rules(
+            predicted_label=base_prediction, 
+            dest_port=dest_port, 
+            flow_pkts_s=flow_pkts_s
+        )
+        
+        # 6. Evaluation du statut final
+        is_threat = final_prediction.upper() not in ["BENIGN", "NORMAL"]
+        
+        # 7. Calcul du temps de traitement
+        processing_time = round((time.time() - start_time) * 1000, 2)
+        
+        if is_threat:
+            logger.warning(f"Menace detectee: {final_prediction} (Port: {dest_port}) - Fiabilite: {confidence:.2f}")
 
-    # 6. Évaluation du niveau de menace
-    is_threat = predicted_label.upper() not in ["BENIGN", "NORMAL"]
-    
-    # 7. Retourner le verdict
-    return PredictionResponse(
-        prediction=predicted_label,
-        is_threat=is_threat,
-        confidence_score=confidence
-    )
+        return PredictionResponse(
+            prediction=final_prediction,
+            is_threat=is_threat,
+            confidence_score=confidence,
+            processing_time_ms=processing_time
+        )
+
+    except KeyError as e:
+        logger.error(f"Erreur de format de donnees : Colonne manquante {e}")
+        raise HTTPException(status_code=400, detail=f"Donnees invalides : {e}")
+    except Exception as e:
+        logger.error(f"Erreur interne lors de la prediction : {str(e)}")
+        raise HTTPException(status_code=500, detail="Erreur interne du serveur analytique.")
