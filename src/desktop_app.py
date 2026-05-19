@@ -268,7 +268,7 @@ class CyberThreatApp(ctk.CTk):
     def run_live_worker(self):
         """Processus d'arriere-plan charge de lire le trafic et requeter l'IA."""
         api_url = "http://127.0.0.1:8000/predict"
-        live_file = "../live_traffic.csv"
+        live_file = "live_traffic.csv"
         last_index = 0  
         waiting_logged = False
 

@@ -81,29 +81,29 @@ class HeuristicEngine:
     CRITICAL_PORTS = {21, 22, 23, 139, 445, 3306, 8080}
 
     @classmethod
-    def apply_rules(cls, predicted_label: str, dest_port: int, flow_pkts_s: float) -> str:
+    def apply_rules(cls, predicted_label: str, dest_port: int, flow_pkts_s: float, flow_duration: float = 0.0) -> str:
         final_label = predicted_label
 
-        # Regle 1 : Correction du Faux Positif (Data Leakage local)
+        # Règle 1 : Correction du Faux Positif (Data Leakage local)
         if final_label == "FTP-Patator" and dest_port != 21:
             final_label = "PortScan"
             
-        # Regle 2 : Detection d'Inondation Applicative (DDoS / DoS HTTP)
-        if dest_port == 80 and flow_pkts_s > 1000.0:
+        # Règle 2 : Détection d'Inondation Applicative (DDoS / DoS HTTP) affinée
+        # On vérifie que la vitesse est extrême ET que le flux dure un minimum (pour éviter les micro-requêtes normales)
+        if dest_port == 80 and flow_pkts_s > 5000.0 and flow_duration > 100000.0:
             final_label = "DDoS"
 
-        # Regle 3 : Detection de force brute ciblée (SSH)
+        # Règle 3 : Détection de force brute ciblée (SSH)
         if dest_port == 22 and flow_pkts_s > 10.0:
             final_label = "SSH-Patator (Brute Force)"
             
-        # Regle 4 : Detection par signature de balayage de ports (Reconnaissance)
+        # Règle 4 : Détection par signature de balayage de ports (Reconnaissance)
         if final_label in ["BENIGN", "NORMAL"] and dest_port in cls.CRITICAL_PORTS:
-            # S'il y a des pics d'activite sur des ports critiques non standard
+            # S'il y a des pics d'activité sur des ports critiques non standard
             if flow_pkts_s > 50.0:
                 final_label = "PortScan"
 
         return final_label
-
 # =====================================================================
 # 5. SCHEMAS DE VALIDATION DES DONNEES (PYDANTIC)
 # =====================================================================
@@ -238,11 +238,13 @@ def predict_traffic(data: NetworkTrafficData, request: Request):
         # 5. Application de la surcouche heuristique
         dest_port = int(input_dict.get("destination_port", 0))
         flow_pkts_s = float(input_dict.get("flow_packets_s", 0.0))
+        flow_duration = float(input_dict.get("flow_duration", 0.0)) # <-- Ajout de la durée
         
         final_prediction = HeuristicEngine.apply_rules(
             predicted_label=base_prediction, 
             dest_port=dest_port, 
-            flow_pkts_s=flow_pkts_s
+            flow_pkts_s=flow_pkts_s,
+            flow_duration=flow_duration # <-- Passage du paramètre
         )
         
         # 6. Evaluation du statut final
