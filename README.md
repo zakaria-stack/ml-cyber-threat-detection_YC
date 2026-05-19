@@ -64,11 +64,10 @@ Méthode 1 : Démarrage Automatisé (Recommandé)
 Un script bash a été développé pour orchestrer le lancement des trois composants majeurs du système (API, Sniffer, Interface) de manière fluide.
 
 À la racine du projet, exécutez :
-Bash
-
+```bash
 chmod +x start_soc.sh
 ./start_soc.sh
-
+```
 Le système vous demandera votre mot de passe administrateur pour initialiser le capteur réseau. La fermeture de l'interface graphique entraînera l'arrêt propre de tous les processus en arrière-plan.
 Méthode 2 : Démarrage Manuel (Mode Développement)
 
