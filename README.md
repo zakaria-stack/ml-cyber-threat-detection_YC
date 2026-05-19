@@ -1,10 +1,3 @@
-2. **Les parenthèses dans le diagramme :** Parfois, le moteur de GitHub (Mermaid) n'aime pas les parenthèses `()` à l'intérieur des flèches. J'ai nettoyé ça pour que ça passe à 100%.
-
-Voici le code **complet et corrigé**. J'ai aussi remis au propre la section 5 (Déploiement) avec les bonnes balises de code bash pour que ça soit magnifique sur GitHub.
-
-### 📝 Copie-colle TOUT ce texte et remplace entièrement le contenu de ton `README.md` :
-
-```markdown
 # 🛡️ YaneCode SOC - Système Intelligent de Détection d'Intrusions (NIDS)
 
 ## 1. Présentation du Projet
@@ -38,12 +31,12 @@ flowchart LR
     classDef alert fill:#ffe6cc,stroke:#ff9900,stroke-width:2px;
 
     subgraph Z1["1. Réseau & Capture (Live Sniffing)"]
-        A["Attaquant (Kali Linux)"] -->|Vecteurs d'attaque| B["Interface Réseau Hôte"]
-        B --> C["Capteur CICFlowMeter (Extraction 78 Features)"]
+        A["Attaquant (Kali Linux)"] -->|Vecteurs attaque| B["Interface Réseau Hôte"]
+        B --> C["Capteur CICFlowMeter"]
     end
 
-    subgraph Z2["2. Moteur d'Analyse (Backend)"]
-        C -->|Flux de données temps réel| D["Pipeline de Formatage"]
+    subgraph Z2["2. Moteur Analyse (Backend)"]
+        C -->|Flux données temps réel| D["Pipeline de Formatage"]
         D -->|Requête POST JSON| E["API REST FastAPI"]
         E -->|Normalisation StandardScaler| F["Modèle XGBoost + Filtre Heuristique"]
         F -->|Verdict de sécurité| E
@@ -51,54 +44,49 @@ flowchart LR
 
     subgraph Z3["3. Console SOC & Remédiation"]
         E -->|Réponse HTTP| G["Console SOC (Interface Graphique)"]
-        G -.->|Déclenchement d'alerte| H["Notification Mobile Telegram"]
+        G -.->|Déclenchement alerte| H["Notification Mobile Telegram"]
     end
 
     class A attacker
     class B,C,D,E,G core
     class F ai
     class H alert
-```
+    ``` 
+5. Instructions de Déploiement
+Prérequis
 
-## 5. Instructions de Déploiement
+    Un environnement virtuel Python 3.13.5 (venv) configuré avec les dépendances du fichier requirements.txt.
 
-### Prérequis
-* Un environnement virtuel Python 3.13.5 (`venv`) configuré avec les dépendances du fichier `requirements.txt`.
-* Des privilèges d'administrateur (`sudo`) pour permettre au capteur d'écouter les interfaces réseaux physiques.
+    Des privilèges d'administrateur (sudo) pour permettre au capteur d'écouter les interfaces réseaux physiques.
 
-### Méthode 1 : Démarrage Automatisé (Recommandé)
+Méthode 1 : Démarrage Automatisé (Recommandé)
+
 Un script bash a été développé pour orchestrer le lancement des trois composants majeurs du système (API, Sniffer, Interface) de manière fluide.
 
 À la racine du projet, exécutez :
-```bash
+Bash
+
 chmod +x start_soc.sh
 ./start_soc.sh
-```
-*Le système vous demandera votre mot de passe administrateur pour initialiser le capteur réseau. La fermeture de l'interface graphique entraînera l'arrêt propre de tous les processus en arrière-plan.*
 
-### Méthode 2 : Démarrage Manuel (Mode Développement)
+Le système vous demandera votre mot de passe administrateur pour initialiser le capteur réseau. La fermeture de l'interface graphique entraînera l'arrêt propre de tous les processus en arrière-plan.
+Méthode 2 : Démarrage Manuel (Mode Développement)
+
 Pour le débogage, les services peuvent être lancés séparément dans trois terminaux distincts :
 
-**Terminal 1 : Backend d'Inférence (API FastAPI)**
-```bash
+Terminal 1 : Backend d'Inférence (API FastAPI)
+Bash
+
 ./venv/bin/python -m uvicorn src.main:app --reload
-```
 
-**Terminal 2 : Capteur Réseau (Sniffer)**
-```bash
+Terminal 2 : Capteur Réseau (Sniffer)
+Bash
+
 sudo ./venv/bin/python live_sniffer.py
-```
 
-**Terminal 3 : Console d'Administration (SOC)**
-```bash
+Terminal 3 : Console d'Administration (SOC)
+Bash
+
 ./venv/bin/python src/desktop_app.py
-```
-*(Cliquez ensuite sur le bouton "Lancer Mode LIVE" dans l'interface).*
-```
 
----
-
-### 🚀 Commandes pour Pousser cette Correction :
-Une fois le fichier sauvegardé dans VS Code, exécute ces deux commandes dans ton terminal pour envoyer la correction vers GitHub :
-```
-
+(Cliquez ensuite sur le bouton "Lancer Mode LIVE" dans l'interface).
